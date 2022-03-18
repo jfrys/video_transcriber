@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:translator/translator.dart';
 import 'package:video_transcriber/speech.dart';
+import 'dart:io';
 
 class TranscribedPage extends StatefulWidget {
   final String speechText;
@@ -11,7 +12,6 @@ class TranscribedPage extends StatefulWidget {
     required this.speechText,
   }) : super(key: key);
 
-
   @override
   _TranscribedPageState createState() => _TranscribedPageState();
 }
@@ -20,12 +20,75 @@ class _TranscribedPageState extends State<TranscribedPage> {
   final translator = GoogleTranslator();
   ValueNotifier valueNotifier = ValueNotifier('');
   String dropdownValue = 'en - English';
+  bool hasImg = false;
+  List<String> transcribedWords = [];
+  String keyWord = '';
+
+  splitTranscription() {
+    // split transcription into array of Strings
+    var arr = valueNotifier.value.toString().split(' ');
+    transcribedWords = arr;
+
+    modeTranscribedWords();
+    delayIconPreview();
+  }
+
+  writeToFile(word) async {
+    final file = File('/Users/jamesfrys/Documents/request.txt');
+    file.writeAsString(word, mode: FileMode.write, flush: true);
+  }
+
+  delayIconPreview() async {
+    await writeToFile(keyWord);
+    Future.delayed(const Duration(seconds: 3), () async {
+      setState(() {
+        hasImg = true;
+      });
+    });
+  }
+
+  modeTranscribedWords() {
+    var mostUsed = [];
+    List<Map<dynamic, dynamic>> data = [];
+    var maxOccurrence = 0;
+
+    var i = 0;
+    while (i < transcribedWords.length) {
+      var number = transcribedWords[i];
+      var occurrence = 1;
+      for (int j = 0; j < transcribedWords.length; j++) {
+        if (j == i) {
+          continue;
+        }
+        else if (number == transcribedWords[j]) {
+          occurrence++;
+        }
+      }
+      transcribedWords.removeWhere((it) => it == number);
+      data.add({number: occurrence});
+      if (maxOccurrence < occurrence) {
+        maxOccurrence = occurrence;
+      }
+    }
+
+    for (var map in data) {
+      if (map[map.keys.toList()[0]] == maxOccurrence) {
+        mostUsed.add(map.keys.toList()[0]);
+      }
+    }
+
+    setState(() {
+      keyWord = mostUsed[0];
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     valueNotifier.value = widget.speechText;
     _editingController = TextEditingController(text: widget.speechText);
+
+    splitTranscription();
   }
 
   @override
@@ -44,7 +107,7 @@ class _TranscribedPageState extends State<TranscribedPage> {
             onPressed: () {
               Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const Speech()),
-                      (route) => false);
+                  (route) => false);
             },
           )
         ],
@@ -62,23 +125,32 @@ class _TranscribedPageState extends State<TranscribedPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // dropdown widget to translate text
                 Align(
                   alignment: Alignment.centerRight,
                   child: DropdownButton<String>(
                     value: dropdownValue,
                     icon: const Icon(Icons.arrow_drop_down),
                     elevation: 16,
-                    style: const TextStyle(fontSize: 20, color: Colors.blueGrey),
+                    style:
+                        const TextStyle(fontSize: 20, color: Colors.blueGrey),
                     onChanged: (String? newValue) {
                       setState(() {
-                        translator.translate(valueNotifier.value, from: dropdownValue.substring(0,2), to: newValue!.substring(0,2)).then((s) {
+                        translator
+                            .translate(valueNotifier.value,
+                                from: dropdownValue.substring(0, 2),
+                                to: newValue!.substring(0, 2))
+                            .then((s) {
                           valueNotifier.value = s.toString();
                         });
                         dropdownValue = newValue;
                       });
                     },
-                    items: <String>['en - English', 'fr - French', 'es - Spanish']
-                        .map<DropdownMenuItem<String>>((String value) {
+                    items: <String>[
+                      'en - English',
+                      'fr - French',
+                      'es - Spanish'
+                    ].map<DropdownMenuItem<String>>((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(value),
@@ -87,6 +159,7 @@ class _TranscribedPageState extends State<TranscribedPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // widget to edit transcribed text
                 ValueListenableBuilder(
                   valueListenable: valueNotifier,
                   builder: (context, value, child) {
@@ -95,106 +168,72 @@ class _TranscribedPageState extends State<TranscribedPage> {
                       child: SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         child: _editTitleTextField(),
-//                      child: Text(valueNotifier.value.toString()),
                       ),
                     );
                   },
                 ),
-                valueNotifier.value.toString().contains('weather') ? const Padding(
-                  padding: EdgeInsets.only(bottom: 8.0),
-                  child: Text('Fetch and display weather data'),
-                ) : const SizedBox(),
-
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      height: 0.5,
-                      color: Colors.grey,
-                    ),
-                    TextButton(
-                      child: const Text(
-                        'Edit Text',
-                        style: TextStyle(fontSize: 18),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isEditingText = true;
-                        });
+                // display icon
+                hasImg ? Image.file(File('/Users/jamesfrys/Documents/$keyWord.png')) : const SizedBox(),
+                TextButton(
+                  child: const Text(
+                    'Advanced Options',
+                    style: TextStyle(color: Colors.grey, fontSize: 18),
+                  ),
+                  onPressed: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return SizedBox(
+                          height: 300,
+                          child: Column(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              TextButton(
+                                child: const Text(
+                                  'Share',
+                                  style: TextStyle(fontSize: 18),
+                                ),
+                                onPressed: () => Share.share(
+                                    valueNotifier.value.toString()),
+                              ),
+                              Container(
+                                height: 0.5,
+                                color: Colors.grey,
+                              ),
+                              TextButton(
+                                child: const Text(
+                                  'Edit Text',
+                                  style: TextStyle(fontSize: 18),
+                                ),
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  setState(() {
+                                    _isEditingText = true;
+                                  });
+                                },
+                              ),
+                              Container(
+                                height: 0.5,
+                                color: Colors.grey,
+                              ),
+                              TextButton(
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                      fontSize: 18, color: Colors.grey),
+                                ),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        );
                       },
-                    ),
-                    Container(
-                      height: 0.5,
-                      color: Colors.grey,
-                    ),
-                    TextButton(
-                      child: const Text(
-                        'Advanced Options',
-                        style: TextStyle(color: Colors.grey, fontSize: 18),
-                      ),
-                      onPressed: () {
-                        Share.share(valueNotifier.value.toString());
-//                        showModalBottomSheet<void>(
-//                          context: context,
-//                          builder: (BuildContext context) {
-//                            return SizedBox(
-//                              height: 300,
-//                              child: Column(
-//                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-//                                crossAxisAlignment: CrossAxisAlignment.start,
-//                                mainAxisSize: MainAxisSize.min,
-//                                children: <Widget>[
-//                                  TextButton(
-//                                    child: const Text(
-//                                      'Print PDF',
-//                                      style: TextStyle(fontSize: 18),
-//                                    ),
-//                                    onPressed: () => ,
-//                                  ),
-//                                  Container(
-//                                    height: 0.5,
-//                                    color: Colors.grey,
-//                                  ),
-//                                  TextButton(
-//                                    child: const Text(
-//                                      'Send as SMS',
-//                                      style: TextStyle(fontSize: 18),
-//                                    ),
-//                                    onPressed: () => print('sending PDF as SMS'),
-//                                  ),
-//
-//                                  Container(
-//                                    height: 0.5,
-//                                    color: Colors.grey,
-//                                  ),
-//                                  TextButton(
-//                                    child: const Text(
-//                                      'Send as email',
-//                                      style: TextStyle(fontSize: 18),
-//                                    ),
-//                                    onPressed: () => print('sending PDF as email'),
-//                                  ),
-//                                  Container(
-//                                    height: 0.5,
-//                                    color: Colors.grey,
-//                                  ),
-//                                  TextButton(
-//                                    child: const Text(
-//                                      'Cancel',
-//                                      style: TextStyle(fontSize: 18, color: Colors.grey),
-//                                    ),
-//                                    onPressed: () => Navigator.pop(context),
-//                                  ),
-//                                  const SizedBox(height: 12),
-//                                ],
-//                              ),
-//                            );
-//                          },
-//                        );
-                      },
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -211,11 +250,12 @@ class _TranscribedPageState extends State<TranscribedPage> {
     if (_isEditingText) {
       return Center(
         child: TextField(
-          onSubmitted: (newValue){
+          onSubmitted: (newValue) {
             setState(() {
               dropdownValue = 'en - English';
               valueNotifier.value = newValue;
               _isEditingText = false;
+              splitTranscription();
             });
           },
           autofocus: true,
@@ -228,17 +268,15 @@ class _TranscribedPageState extends State<TranscribedPage> {
         onTap: () {
           setState(() {
             _isEditingText = true;
+            hasImg = false;
           });
         },
-        child: Text(
-          valueNotifier.value.toString()
-        ));
+        child: Text(valueNotifier.value.toString()));
   }
 
   @override
   void dispose() {
-    _editingController.dispose();
     super.dispose();
+    _editingController.dispose();
   }
 }
-
